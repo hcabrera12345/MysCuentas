@@ -85,24 +85,31 @@ class AIHandler:
 
     def parse_intent(self, text: str, categories: list = None) -> dict:
         """
-        Determines if the user wants to log an expense or asks for a report.
+        Determines if the user wants to log an expense, asks for a report, or wants to delete something.
         """
         cat_str = ", ".join(categories) if categories else "standard categories"
 
         prompt = f"""
-        Analyze logic: Is input "{text}" a Report Request or an Expense Log?
+        Analyze logic: Is input "{text}" a REPORT Request, an EXPENSE Log, or a DELETION Request?
         
+        - DELETE: "borra el ultimo", "me equivoque", "elimina eso", "corrige", "deshacer".
         - REPORT: "dame reporte", "cuanto gaste?", "grafico", "resumen".
-        - EXPENSE: anything else implying spending money ("50 pan", "gaste 10", "comida 20", "anota 5").
+        - EXPENSE: spending money. "50 pan", "gaste 10", "comida 20", "anota 5".
         
         Output RAW JSON (no markdown):
         {{
-            "type": "EXPENSE" or "REPORT",
+            "type": "EXPENSE" | "REPORT" | "DELETE",
             "data": {{ ... }}
         }}
 
-        If EXPENSE, extract: item, amount, currency (default 'Bs'), category (Infer from [{cat_str}]), date.
+        If EXPENSE, extract: item, amount, currency (default 'Bs'), category, date.
+        CRITICAL FOR CATEGORY: Match the input item to the BEST category from this list: [{cat_str}].
+        - "Gasolina", "Taxi", "Bus" -> Transporte
+        - "Cine", "Juego" -> Entretenimiento
+        - "Remera", "Zapato" -> Ropa (if exists) or Otros
+
         If REPORT, extract: query_type ('total','list','graph'), category, time_range.
+        If DELETE, data is empty {{}}.
         """
         try:
             response = self.model.generate_content(prompt)

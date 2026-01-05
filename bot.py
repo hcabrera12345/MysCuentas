@@ -112,7 +112,14 @@ class ExpenseBot:
                 elif result['type'] == 'image':
                     await status_msg.delete()
                     await update.message.reply_photo(photo=open(result['path'], 'rb'), caption="Aquí tienes tu gráfico 📈")
-                
+            
+            elif intent_type == 'DELETE':
+                deleted = sheets_handler.delete_last_entry(user_name)
+                if deleted:
+                    await status_msg.edit_text(f"🗑️ **Eliminado con éxito**\nRegistro: {deleted}")
+                else:
+                    await status_msg.edit_text("🤷‍♂️ No encontré ningún gasto reciente tuyo para borrar.")
+
             elif intent_type == 'EXPENSE':
                 item = intent_data.get('item', 'Desconocido')
                 amount = intent_data.get('amount', 0)

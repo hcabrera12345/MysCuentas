@@ -89,3 +89,33 @@ class SheetsHandler:
 
     def get_all_records(self):
         return self.sheet.get_all_records()
+
+    def delete_last_entry(self, user_name: str) -> str:
+        """
+        Finds the last entry for a specific user and deletes it.
+        Returns a string describing what was deleted, or None if not found.
+        """
+        try:
+            records = self.sheet.get_all_values() # List of lists
+            # Iterate backwards (ignoring header)
+            for i in range(len(records) - 1, 0, -1):
+                row = records[i]
+                # Check if this row belongs to user (Col 6 typically, index 5)
+                # But headers might vary, so we check dynamic index if possible, or assume last col
+                # Robust approach: Get header index
+                headers = records[0]
+                try:
+                    user_idx = headers.index("Usuario")
+                except ValueError:
+                    user_idx = 5 # Default fallback
+
+                if len(row) > user_idx and row[user_idx] == user_name:
+                    # Found it!
+                    deleted_item = f"{row[2]} ({row[3]} {row[4]})" # Item + Amount + Curr
+                    self.sheet.delete_rows(i + 1) # gspread is 1-indexed
+                    return deleted_item
+            
+            return None # No entry found for this user
+        except Exception as e:
+            print(f"Error deleting entry: {e}")
+            return None
