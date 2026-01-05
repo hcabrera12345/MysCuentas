@@ -42,8 +42,9 @@ class AIHandler:
             cleaned_text = self._clean_json(response.text)
             return json.loads(cleaned_text)
         except Exception as e:
-            print(f"Error processing text: {e}")
-            return None
+            error_msg = f"{type(e).__name__}: {str(e)}"
+            print(f"Error processing text: {error_msg}")
+            return {"error": error_msg}
 
     def process_audio(self, audio_path: str) -> dict:
         prompt = "Listen to this audio and extract expense details. Return ONLY JSON."
@@ -63,8 +64,9 @@ class AIHandler:
             cleaned_text = self._clean_json(response.text)
             return json.loads(cleaned_text)
         except Exception as e:
-            print(f"Error processing audio: {e}")
-            return None
+            error_msg = f"{type(e).__name__}: {str(e)}"
+            print(f"Error processing audio: {error_msg}")
+            return {"error": error_msg}
 
     def parse_intent(self, text: str) -> dict:
         """
@@ -98,5 +100,6 @@ class AIHandler:
             cleaned_text = self._clean_json(response.text)
             return json.loads(cleaned_text)
         except Exception as e:
-            print(f"Error parsing intent: {e}")
-            return None
+            error_msg = f"{type(e).__name__}: {str(e)}"
+            print(f"Error parsing intent: {error_msg}")
+            return {"error": error_msg}
