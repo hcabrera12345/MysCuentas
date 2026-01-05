@@ -17,9 +17,9 @@ class AIHandler:
             raise ValueError("GEMINI_API_KEY not found in environment variables")
         genai.configure(api_key=api_key)
         
-        # Using gemini-2.0-flash as 1.5 was reported missing in verification
+        # Switched to gemini-1.5-flash to avoid Free Tier Quota (429) errors on 2.0
         self.model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash" 
+            model_name="gemini-1.5-flash" 
         )
 
     def _clean_json(self, text: str):
@@ -46,36 +46,20 @@ class AIHandler:
             return None
 
     def process_audio(self, audio_path: str) -> dict:
-        prompt = """
-        Listen to this audio and extract the expense details.
-        
-        Rules:
-        - If no currency is specified, assume 'Bs'.
-        - Categories should be one of: Alimentos, Transporte, Hogar, Servicios, Entretenimiento, Salud, Otros.
-        - Date should be in YYYY-MM-DD format if mentioned, otherwise leave empty.
-        """
+        prompt = "Listen to this audio and extract expense details. Return ONLY JSON."
         try:
-            # We skip file upload for now to ensure stability with standard text prompt fallback
-            # But since user wants audio, we must fix the library.
-            # Assuming older library version on Render, we might need a workaround.
-            # However, for now, let's treat audio as text (transcription is done by Gemini).
-            # If upload_file is missing, likely version < 0.3. 
-            pass 
-        except Exception:
-            pass
+            # Use Inline Data (sending bytes directly) to avoid 'upload_file' errors on Render
+            with open(audio_path, "rb") as f:
+                audio_data = f.read()
 
-    # REWRITING FUNCTION TO BE SAFER
-    def process_audio(self, audio_path: str) -> dict:
-        prompt = "Listen to this audio and extract expense details. JSON only."
-        try:
-           # Attempting to use the File API if available, else fail gracefully
-            if hasattr(genai, 'upload_file'):
-                audio_file = genai.upload_file(audio_path)
-                response = self.model.generate_content([prompt, audio_file])
-            else:
-                 print("ERROR: Old genai version. Cannot process audio.")
-                 return None
-
+            response = self.model.generate_content([
+                prompt,
+                {
+                    "mime_type": "audio/ogg",
+                    "data": audio_data
+                }
+            ])
+            
             cleaned_text = self._clean_json(response.text)
             return json.loads(cleaned_text)
         except Exception as e:
