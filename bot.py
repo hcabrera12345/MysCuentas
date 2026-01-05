@@ -142,31 +142,29 @@ class ExpenseBot:
             await status_msg.edit_text(f"🔥 Ocurrió un error interno: {str(e)}")
 
 
-async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Placeholder for reporting logic
-    await update.message.reply_text("🚧 Reportes en construcción...")
-
 if __name__ == '__main__':
-    TOKEN = os.getenv("TELEGRAM_TOKEN")
-    if not TOKEN:
-        print("Error: TELEGRAM_TOKEN not set!")
+    try:
+        # Instantiate the bot class
+        bot = ExpenseBot()
+        
+        # Register Handlers from the bot instance
+        bot.app.add_handler(CommandHandler("start", bot.start))
+        bot.app.add_handler(CommandHandler("reload", bot.reload_categories))
+        bot.app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), bot.handle_text))
+        bot.app.add_handler(MessageHandler(filters.VOICE, bot.handle_voice))
+
+        # Check for Render environment
+        if os.getenv("RENDER"):
+            print("Starting Webhook for Render...")
+            bot.app.run_webhook(
+                listen="0.0.0.0",
+                port=int(os.environ.get("PORT", 8080)),
+                webhook_url=os.getenv("WEBHOOK_URL")
+            )
+        else:
+            print("Starting Polling (Local Mode)...")
+            bot.app.run_polling()
+            
+    except Exception as e:
+        print(f"FATAL ERROR: {e}")
         exit(1)
-
-    application = ApplicationBuilder().token(TOKEN).build()
-
-    application.add_handler(CommandHandler('start', start))
-    application.add_handler(CommandHandler('reporte', report))
-    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
-    application.add_handler(MessageHandler(filters.VOICE, handle_voice))
-
-    # Check for Render environment
-    if os.getenv("RENDER"):
-        print("Starting Webhook for Render...")
-        application.run_webhook(
-            listen="0.0.0.0",
-            port=int(os.environ.get("PORT", 8080)),
-            webhook_url=os.getenv("WEBHOOK_URL")  # Must be set in Render
-        )
-    else:
-        print("Starting Polling (Local Mode)...")
-        application.run_polling()
