@@ -92,10 +92,17 @@ class AIHandler:
         prompt = f"""
         Analyze logic: Is input "{text}" a REPORT Request, an EXPENSE Log, or a DELETION Request?
         
-        - DELETE: "borra el ultimo", "me equivoque", "elimina eso", "corrige", "deshacer".
-        - REPORT: "dame reporte", "cuanto gaste?", "grafico", "resumen".
-        - EXPENSE: spending money. "50 pan", "gaste 10", "comida 20", "anota 5".
+        RULES:
+        1. REPORT: Any query about "gastos", "total", "cuanto", "dame", "ver", "necesito", "reporte".
+           - Ex: "dame los gastos de hoy", "cuanto gaste en comida", "total transporte ayer", "necesito reporte".
+           - Even if it mentions categories ("alimentos"), it is a REPORT if it asks for "dame" or "cuanto".
         
+        2. DELETE: "borra", "elimina", "me equivoque", "deshacer".
+
+        3. EXPENSE: ONLY if it implies *spending now* or *logging data*.
+           - Ex: "50 pan", "gaste 10 taxi", "anota comida 20", "compré zapatos".
+           - If ambiguous but contains "dame" or "ver", it is REPORT.
+
         Output RAW JSON (no markdown):
         {{
             "type": "EXPENSE" | "REPORT" | "DELETE",
@@ -104,18 +111,17 @@ class AIHandler:
 
         If EXPENSE, extract: item, amount, currency (default 'Bs'), category, date.
         CRITICAL FOR CATEGORY: Match the input item to the BEST category from this list: [{cat_str}].
-        - "Gasolina", "Taxi", "Bus" -> Transporte
-        - "Cine", "Juego" -> Entretenimiento
-        - "Remera", "Zapato" -> Ropa (if exists) or Otros
 
         If REPORT, extract: 
         - query_type ('total','list','graph')
-        - category (optional, if specific category mentioned like "gasto en comida")
+        - category (optional, if mentioned like "gastos en alimentos")
         - time_range (today, week, month, year, or all)
-        - filter_user (optional, if a name is mentioned like "por Hernan" or "de Maria")
+        - filter_user (optional, if mentioned like "por Hernan")
         
         If DELETE, data is empty {{}}.
         """
+        
+
         try:
             response = self.model.generate_content(prompt)
             cleaned_text = self._clean_json(response.text)
