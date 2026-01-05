@@ -132,9 +132,10 @@ class ExpenseBot:
                         f"📂 Categ: {category}"
                     )
                 else:
+                    await status_msg.edit_text("❌ Error guardando en Sheets.")
+            
             else:
-                report_text = engine.generate_text_report(time_range)
-                await status_msg.edit_text(report_text)
+                 await status_msg.edit_text("❌ Tipo de solicitud desconocida.")
                 
     except Exception as e:
         logging.error(f"Error processing input: {e}")
