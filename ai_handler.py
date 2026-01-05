@@ -29,13 +29,18 @@ class AIHandler:
 
     def process_text(self, text: str) -> dict:
         prompt = f"""
-        Extract the expense details from the following text:
-        "{text}"
+        You are an expense tracking assistant. Extract expense details from this text: "{text}"
         
-        Rules:
-        - If no currency is specified, assume 'Bs'.
-        - Categories should be one of: Alimentos, Transporte, Hogar, Servicios, Entretenimiento, Salud, Otros.
-        - Date should be in YYYY-MM-DD format if mentioned, otherwise leave empty.
+        It is almost certainly an expense log unless explicitly stated otherwise.
+        Synonyms for expense: gasto, compra, pago, costo, anota, registras, etc.
+        Also simple phrases like "50 bs en pan" are expenses.
+        
+        Return RAW JSON (no markdown formatting) with these keys:
+        - item: What was bought (short description).
+        - amount: The number (numeric).
+        - currency: Currency symbol/code (default 'Bs' if not found).
+        - category: One of [Alimentos, Transporte, Hogar, Servicios, Entretenimiento, Salud, Otros]. Infer best fit.
+        - date: YYYY-MM-DD (only if explicitly mentioned, else null).
         """
         try:
             response = self.model.generate_content(prompt)
@@ -47,7 +52,12 @@ class AIHandler:
             return {"error": error_msg}
 
     def process_audio(self, audio_path: str) -> dict:
-        prompt = "Listen to this audio and extract expense details. Return ONLY JSON."
+        prompt = """
+        Listen to this audio. It is a user describing an expense. Extract details into JSON.
+        Examples: "Compré pan 5 pesos", "Gasto de taxi 20", "Anota 50 en remeras".
+        
+        Return RAW JSON (no markdown) with keys: item, amount, currency (default Bs), category, date.
+        """
         try:
             # Use Inline Data (sending bytes directly) to avoid 'upload_file' errors on Render
             with open(audio_path, "rb") as f:
@@ -71,29 +81,21 @@ class AIHandler:
     def parse_intent(self, text: str) -> dict:
         """
         Determines if the user wants to log an expense or asks for a report.
-        Returns JSON with 'type': 'EXPENSE' | 'REPORT' and relevant data.
         """
         prompt = f"""
-        Analyze the following user input and determine if it is an Expense Log or a Report Request.
-        Input: "{text}"
+        Analyze logic: Is input "{text}" a Report Request or an Expense Log?
         
-        Output JSON schema:
+        - REPORT: "dame reporte", "cuanto gaste?", "grafico", "resumen".
+        - EXPENSE: anything else implying spending money ("50 pan", "gaste 10", "comida 20", "anota 5").
+        
+        Output RAW JSON (no markdown):
         {{
             "type": "EXPENSE" or "REPORT",
             "data": {{ ... }}
         }}
 
-        If EXPENSE, "data" should contain:
-        - item: str
-        - amount: float
-        - currency: str (default 'Bs')
-        - category: str (Alimentos, Transporte, Hogar, Servicios, Entretenimiento, Salud, Otros)
-        - date: str (YYYY-MM-DD or null)
-
-        If REPORT, "data" should contain:
-        - query_type: "total" | "list" | "graph"
-        - category: str (optional filter)
-        - time_range: "today" | "week" | "month" | "all" (infer from context)
+        If EXPENSE, extract: item, amount, currency (default 'Bs'), category (Infer), date.
+        If REPORT, extract: query_type ('total','list','graph'), category, time_range.
         """
         try:
             response = self.model.generate_content(prompt)
