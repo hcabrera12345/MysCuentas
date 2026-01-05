@@ -99,16 +99,19 @@ class ExpenseBot:
             print(f"DEBUG: Intent Type: {intent_type}, Data: {intent_data}") 
 
             if intent_type == 'REPORT':
-                await status_msg.edit_text("📊 Generando reporte...")
-                # Report logic here (passing user_name? maybe for filtering later)
-                # For now standard report
-                # Actually, let's keep existing report logic or assume report_engine integration
+                await status_msg.edit_text("📊 Analizando datos...")
+                
+                # Fetch fresh records from Sheet
+                records = sheets_handler.get_all_records()
+                
                 from report_engine import ReportEngine
-                engine = ReportEngine(sheets_handler.sheet)
+                engine = ReportEngine(records)
+                
+                # Pass all AI-extracted filters to the engine
                 result = engine.generate_report(intent_data)
                 
                 if result['type'] == 'text':
-                    await status_msg.edit_text(result['content'])
+                    await status_msg.edit_text(result['content'], parse_mode='Markdown')
                 elif result['type'] == 'image':
                     await status_msg.delete()
                     await update.message.reply_photo(photo=open(result['path'], 'rb'), caption="Aquí tienes tu gráfico 📈")

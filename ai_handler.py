@@ -108,7 +108,12 @@ class AIHandler:
         - "Cine", "Juego" -> Entretenimiento
         - "Remera", "Zapato" -> Ropa (if exists) or Otros
 
-        If REPORT, extract: query_type ('total','list','graph'), category, time_range.
+        If REPORT, extract: 
+        - query_type ('total','list','graph')
+        - category (optional, if specific category mentioned like "gasto en comida")
+        - time_range (today, week, month, year, or all)
+        - filter_user (optional, if a name is mentioned like "por Hernan" or "de Maria")
+        
         If DELETE, data is empty {{}}.
         """
         try:
