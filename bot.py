@@ -57,6 +57,9 @@ async def process_input(update: Update, input_data, is_voice):
             # Voice is currently always treated as Expense for simplicity, 
             # unless we upgrade process_audio to return Intent.
             data = ai_handler.process_audio(input_data)
+            if not data:
+                await status_msg.edit_text("❌ No pude entender el audio. ¿Seguro que es un gasto?")
+                return
             intent_type = 'EXPENSE'
             intent_data = data # Legacy format from process_audio
         else:

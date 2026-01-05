@@ -25,6 +25,11 @@ class AIHandler:
             }
         )
 
+    def _clean_json(self, text: str):
+        # Remove markdown code blocks if present
+        text = text.replace("```json", "").replace("```", "").strip()
+        return text
+
     def process_text(self, text: str) -> dict:
         prompt = f"""
         Extract the expense details from the following text:
@@ -37,7 +42,8 @@ class AIHandler:
         """
         try:
             response = self.model.generate_content(prompt)
-            return json.loads(response.text)
+            cleaned_text = self._clean_json(response.text)
+            return json.loads(cleaned_text)
         except Exception as e:
             print(f"Error processing text: {e}")
             return None
@@ -54,7 +60,8 @@ class AIHandler:
         try:
             audio_file = genai.upload_file(audio_path)
             response = self.model.generate_content([prompt, audio_file])
-            return json.loads(response.text)
+            cleaned_text = self._clean_json(response.text)
+            return json.loads(cleaned_text)
         except Exception as e:
             print(f"Error processing audio: {e}")
             return None
@@ -88,7 +95,8 @@ class AIHandler:
         """
         try:
             response = self.model.generate_content(prompt)
-            return json.loads(response.text)
+            cleaned_text = self._clean_json(response.text)
+            return json.loads(cleaned_text)
         except Exception as e:
             print(f"Error parsing intent: {e}")
             return None
