@@ -17,9 +17,9 @@ class AIHandler:
             raise ValueError("GEMINI_API_KEY not found in environment variables")
         genai.configure(api_key=api_key)
         
-        # Switched to gemini-1.5-flash to avoid Free Tier Quota (429) errors on 2.0
+        # Using gemini-pro (1.0) as 1.5-flash is 404ing on this environment
         self.model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash" 
+            model_name="gemini-pro" 
         )
 
     def _clean_json(self, text: str):
