@@ -1,4 +1,4 @@
-python-telegram-bot[job-queue]
+python-telegram-bot==20.7
 google-generativeai
 gspread
 oauth2client
@@ -7,5 +7,5 @@ flask
 gunicorn
 requests
 pandas
-matplotlib
 openpyxl
+# matplotlib # Disabled temporarily to fix build
