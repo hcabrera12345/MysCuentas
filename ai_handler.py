@@ -17,9 +17,9 @@ class AIHandler:
             raise ValueError("GEMINI_API_KEY not found in environment variables")
         genai.configure(api_key=api_key)
         
-        # Using gemini-1.5-flash (Requires google-generativeai >= 0.7.0)
+        # verified working model via REST check: gemini-flash-latest
         self.model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash" 
+            model_name="gemini-flash-latest" 
         )
 
     def _clean_json(self, text: str):
