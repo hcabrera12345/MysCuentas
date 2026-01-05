@@ -23,89 +23,115 @@ except Exception as e:
     # We continue to allow the bot to start so it doesn't crash Render immediately, 
     # but actual functionality will fail.
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "¡Hola! Soy MysCuentas Bot. 🤖\n"
-        "Envíame un audio o texto con tu gasto y lo guardaré en Sheets.\n"
-        "Ejemplo: '50 bolivianos en gasolina'"
-    )
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_text = update.message.text
-    await process_input(update, user_text, is_voice=False)
-
-async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Download voice file
-    voice_file = await context.bot.get_file(update.message.voice.file_id)
-    file_path = f"voice_{update.message.from_user.id}.ogg"
-    await voice_file.download_to_drive(file_path)
-    
-    await process_input(update, file_path, is_voice=True)
-    
-    # Cleanup
-    if os.path.exists(file_path):
-        os.remove(file_path)
-
-
-from report_engine import ReportEngine
-
-async def process_input(update: Update, input_data, is_voice):
-    status_msg = await update.message.reply_text("⏳ Procesando...")
-    
-    try:
-        if is_voice:
-            # Voice is currently always treated as Expense for simplicity, 
-            # unless we upgrade process_audio to return Intent.
-            data = ai_handler.process_audio(input_data)
-            if not data:
-                await status_msg.edit_text("❌ No pude entender el audio. ¿Seguro que es un gasto?")
-                return
-            intent_type = 'EXPENSE'
-            intent_data = data # Legacy format from process_audio
-        else:
-            # Text uses new Intent Parser
-            result = ai_handler.parse_intent(input_data)
-            if not result:
-                 await status_msg.edit_text("❌ No entendí. Intenta de nuevo.")
-                 return
-            intent_type = result.get('type')
-            intent_data = result.get('data')
-
-        if intent_type == 'EXPENSE':
-            # Use current date if AI didn't find one
-            date = intent_data.get('date') or get_current_date()
-            item = intent_data.get('item', 'Desconocido')
-            amount = intent_data.get('amount', 0)
-            currency = intent_data.get('currency', 'Bs')
-            category = intent_data.get('category', 'Otros')
+class ExpenseBot:
+    def __init__(self):
+        self.tokenizer = os.getenv("TELEGRAM_TOKEN")
+        self.app = ApplicationBuilder().token(self.tokenizer).build()
+        
+        # Initialize Handlers
+        try:
+            self.ai = AIHandler()
+            self.sheets = SheetsHandler()
             
-            # Save to Sheets
-            success = sheets_handler.add_expense(date, category, item, amount, currency)
+            # Load Categories from Sheet
+            print("Loading categories...")
+            self.categories = self.sheets.get_categories()
+            print(f"Loaded config: {self.categories}")
             
-            if success:
-                await status_msg.edit_text(
-                    f"✅ **Gasto Guardado**\n"
-                    f"📅 Fecha: {date}\n"
-                    f"🛒 Item: {item}\n"
-                    f"💰 Todo: {amount} {currency}\n"
-                    f"📂 Categ: {category}"
-                )
+        except Exception as e:
+            print(f"CRITICAL ERROR INIT: {e}")
+            raise e
+
+    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text("👋 ¡Hola! Soy MysCuentas.\n\n📝 Registra gastos escribiendo o por audio.\n📊 Pídeme reportes.\n🔄 Usa /reload para actualizar categorías desde el Sheet.")
+
+    async def reload_categories(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Forces a refresh of categories from Google Sheets."""
+        try:
+            self.categories = self.sheets.get_categories()
+            await update.message.reply_text(f"✅ Categorías actualizadas: {len(self.categories)} encontradas.")
+        except Exception as e:
+            await update.message.reply_text(f"⚠️ Error actualizando: {e}")
+
+    async def handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user_name = update.effective_user.first_name
+        await self.process_input(update, update.message.text, is_voice=False, user_name=user_name)
+
+    async def handle_voice(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        file = await context.bot.get_file(update.message.voice.file_id)
+        file_path = f"voice_files/file_{update.message.message_id}.oga"
+        os.makedirs("voice_files", exist_ok=True)
+        await file.download_to_drive(file_path)
+        
+        user_name = update.effective_user.first_name
+        await self.process_input(update, file_path, is_voice=True, user_name=user_name)
+        
+        # Cleanup
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+    async def process_input(self, update: Update, input_data: str, is_voice: bool, user_name: str):
+        status_msg = await update.message.reply_text("🤔 Procesando...")
+        try:
+            ai_handler = self.ai
+            sheets_handler = self.sheets
+            
+            if is_voice:
+                # Voice currently treated as Expense
+                data = ai_handler.process_audio(input_data, categories=self.categories)
+                if not data or "error" in data:
+                    err = data.get("error", "Unknown Error") if data else "None Result"
+                    await status_msg.edit_text(f"⚠️ Error procesando audio: {err}")
+                    return
+                intent_type = 'EXPENSE'
+                intent_data = data 
             else:
-                await status_msg.edit_text("⚠️ Error al guardar en Google Sheets. Verifica la conexión.")
+                # Text input
+                intent = ai_handler.parse_intent(input_data, categories=self.categories)
+                if not intent or "error" in intent:
+                    err = intent.get("error", "Unknown Error") if intent else "None Result"
+                    await status_msg.edit_text(f"⚠️ Error procesando texto: {err}")
+                    return
+                
+                intent_type = intent.get('type')
+                intent_data = intent.get('data')
 
-        elif intent_type == 'REPORT':
-            records = sheets_handler.get_all_records()
-            engine = ReportEngine(records)
-            time_range = intent_data.get('time_range', 'all')
-            query_type = intent_data.get('query_type', 'text')
+            print(f"DEBUG: Intent Type: {intent_type}, Data: {intent_data}") 
 
-            if query_type == 'graph':
-                graph_buf = engine.generate_graph(time_range)
-                if graph_buf:
+            if intent_type == 'REPORT':
+                await status_msg.edit_text("📊 Generando reporte...")
+                # Report logic here (passing user_name? maybe for filtering later)
+                # For now standard report
+                # Actually, let's keep existing report logic or assume report_engine integration
+                from report_engine import ReportEngine
+                engine = ReportEngine(sheets_handler.sheet)
+                result = engine.generate_report(intent_data)
+                
+                if result['type'] == 'text':
+                    await status_msg.edit_text(result['content'])
+                elif result['type'] == 'image':
                     await status_msg.delete()
-                    await update.message.reply_photo(photo=graph_buf, caption=f"📊 Gráfico de gastos ({time_range})")
+                    await update.message.reply_photo(photo=open(result['path'], 'rb'), caption="Aquí tienes tu gráfico 📈")
+                
+            elif intent_type == 'EXPENSE':
+                item = intent_data.get('item', 'Desconocido')
+                amount = intent_data.get('amount', 0)
+                currency = intent_data.get('currency', 'Bs')
+                category = intent_data.get('category', 'Otros')
+                date = intent_data.get('date') or get_current_date()
+                
+                success = sheets_handler.add_expense(date, category, item, amount, currency, user_name)
+                
+                if success:
+                    await status_msg.edit_text(
+                        f"✅ **Gasto Guardado**\n"
+                        f"👤 Usuario: {user_name}\n"
+                        f"📅 Fecha: {date}\n"
+                        f"🛒 Item: {item}\n"
+                        f"💰 Todo: {amount} {currency}\n"
+                        f"📂 Categ: {category}"
+                    )
                 else:
-                    await status_msg.edit_text("No hay datos suficientes para el gráfico.")
             else:
                 report_text = engine.generate_text_report(time_range)
                 await status_msg.edit_text(report_text)

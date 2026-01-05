@@ -27,7 +27,9 @@ class AIHandler:
         text = text.replace("```json", "").replace("```", "").strip()
         return text
 
-    def process_text(self, text: str) -> dict:
+    def process_text(self, text: str, categories: list = None) -> dict:
+        cat_str = ", ".join(categories) if categories else "Alimentos, Transporte, Hogar, Servicios, Entretenimiento, Salud, Otros"
+        
         prompt = f"""
         You are an expense tracking assistant. Extract expense details from this text: "{text}"
         
@@ -39,7 +41,7 @@ class AIHandler:
         - item: What was bought (short description).
         - amount: The number (numeric).
         - currency: Currency symbol/code (default 'Bs' if not found).
-        - category: One of [Alimentos, Transporte, Hogar, Servicios, Entretenimiento, Salud, Otros]. Infer best fit.
+        - category: One of [{cat_str}]. Infer best fit.
         - date: YYYY-MM-DD (only if explicitly mentioned, else null).
         """
         try:
@@ -51,12 +53,15 @@ class AIHandler:
             print(f"Error processing text: {error_msg}")
             return {"error": error_msg}
 
-    def process_audio(self, audio_path: str) -> dict:
-        prompt = """
+    def process_audio(self, audio_path: str, categories: list = None) -> dict:
+        cat_str = ", ".join(categories) if categories else "Alimentos, Transporte, Hogar, Servicios, Entretenimiento, Salud, Otros"
+
+        prompt = f"""
         Listen to this audio. It is a user describing an expense. Extract details into JSON.
         Examples: "Compré pan 5 pesos", "Gasto de taxi 20", "Anota 50 en remeras".
         
         Return RAW JSON (no markdown) with keys: item, amount, currency (default Bs), category, date.
+        Category MUST be one of: [{cat_str}].
         """
         try:
             # Use Inline Data (sending bytes directly) to avoid 'upload_file' errors on Render
@@ -78,10 +83,12 @@ class AIHandler:
             print(f"Error processing audio: {error_msg}")
             return {"error": error_msg}
 
-    def parse_intent(self, text: str) -> dict:
+    def parse_intent(self, text: str, categories: list = None) -> dict:
         """
         Determines if the user wants to log an expense or asks for a report.
         """
+        cat_str = ", ".join(categories) if categories else "standard categories"
+
         prompt = f"""
         Analyze logic: Is input "{text}" a Report Request or an Expense Log?
         
@@ -94,7 +101,7 @@ class AIHandler:
             "data": {{ ... }}
         }}
 
-        If EXPENSE, extract: item, amount, currency (default 'Bs'), category (Infer), date.
+        If EXPENSE, extract: item, amount, currency (default 'Bs'), category (Infer from [{cat_str}]), date.
         If REPORT, extract: query_type ('total','list','graph'), category, time_range.
         """
         try:
