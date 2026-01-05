@@ -17,12 +17,9 @@ class AIHandler:
             raise ValueError("GEMINI_API_KEY not found in environment variables")
         genai.configure(api_key=api_key)
         
+        # Using gemini-2.0-flash as 1.5 was reported missing in verification
         self.model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
-            generation_config={
-                "response_mime_type": "application/json",
-                "response_schema": Expense
-            }
+            model_name="gemini-2.0-flash" 
         )
 
     def _clean_json(self, text: str):
