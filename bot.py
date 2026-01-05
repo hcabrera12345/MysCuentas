@@ -137,9 +137,9 @@ class ExpenseBot:
             else:
                  await status_msg.edit_text("❌ Tipo de solicitud desconocida.")
                 
-    except Exception as e:
-        logging.error(f"Error processing input: {e}")
-        await status_msg.edit_text(f"🔥 Ocurrió un error interno: {str(e)}")
+        except Exception as e:
+            logging.error(f"Error processing input: {e}")
+            await status_msg.edit_text(f"🔥 Ocurrió un error interno: {str(e)}")
 
 
 async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
