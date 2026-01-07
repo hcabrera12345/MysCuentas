@@ -38,14 +38,44 @@ class ExpenseBot:
             self.categories = self.sheets.get_categories()
             print(f"Loaded config: {self.categories}")
             
+            # Load Whitelist
+            allowed_users_env = os.getenv("ALLOWED_USERS", "")
+            self.allowed_users = [
+                int(uid.strip()) 
+                for uid in allowed_users_env.split(",") 
+                if uid.strip().isdigit()
+            ]
+            if not self.allowed_users:
+                print("⚠️ WARNING: ALLOWED_USERS is empty. Bot is public!")
+            else:
+                print(f"🔒 Security Active. Allowed IDs: {self.allowed_users}")
+
         except Exception as e:
             print(f"CRITICAL ERROR INIT: {e}")
             raise e
 
+    async def check_auth(self, update: Update) -> bool:
+        """Returns True if user is authorized, False otherwise."""
+        if not self.allowed_users:
+            return True # Public mode
+        
+        user_id = update.effective_user.id
+        if user_id in self.allowed_users:
+            return True
+        
+        # Unauthorized
+        print(f"⛔ Unauthorized access attempt by ID: {user_id} ({update.effective_user.first_name})")
+        await update.message.reply_text(f"⛔ **Acceso Denegado**\nTu ID de Telegram es: `{user_id}`\n\nContacta al administrador para que te agregue.")
+        return False
+
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not await self.check_auth(update): return
+        
         await update.message.reply_text("👋 ¡Hola! Soy MysCuentas.\n\n📝 Registra gastos escribiendo o por audio.\n📊 Pídeme reportes.\n🔄 Usa /reload para actualizar categorías desde el Sheet.")
 
     async def reload_categories(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not await self.check_auth(update): return
+        
         """Forces a refresh of categories from Google Sheets."""
         try:
             self.categories = self.sheets.get_categories()
@@ -54,10 +84,14 @@ class ExpenseBot:
             await update.message.reply_text(f"⚠️ Error actualizando: {e}")
 
     async def handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not await self.check_auth(update): return
+        
         user_name = update.effective_user.first_name
         await self.process_input(update, update.message.text, is_voice=False, user_name=user_name)
 
     async def handle_voice(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not await self.check_auth(update): return
+        
         file = await context.bot.get_file(update.message.voice.file_id)
         file_path = f"voice_files/file_{update.message.message_id}.oga"
         os.makedirs("voice_files", exist_ok=True)
@@ -71,6 +105,7 @@ class ExpenseBot:
             os.remove(file_path)
 
     async def process_input(self, update: Update, input_data: str, is_voice: bool, user_name: str):
+        # Auth checked by callers
         status_msg = await update.message.reply_text("🤔 Procesando...")
         try:
             ai_handler = self.ai
