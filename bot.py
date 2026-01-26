@@ -5,10 +5,7 @@ from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
-from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from ai_handler import AIHandler
@@ -176,11 +173,26 @@ class ExpenseBot:
                     date = exp.get('date') or get_current_date()
                     
                     if sheets_handler.add_expense(date, category, item, amount, currency, user_name):
-                        results.append(f"✅ {item} ({amount} {currency})")
+                        # Requested Format:
+                        # ✅ **Gasto Guardado**
+                        # 👤 Usuario: Hernan
+                        # 📅 Fecha: 2026-01-25
+                        # 🛒 Item: cerveza
+                        # 💰 Todo: 90 Bs
+                        # 📂 Categ: ENTRETENIMIENTO
+                        msg = (
+                            f"✅ **Gasto Guardado**\n"
+                            f"👤 Usuario: {user_name}\n"
+                            f"📅 Fecha: {date}\n"
+                            f"🛒 Item: {item}\n"
+                            f"💰 Todo: {amount} {currency}\n"
+                            f"📂 Categ: {category.upper()}"
+                        )
+                        results.append(msg)
                     else:
-                        results.append(f"❌ {item} (Error)")
+                        results.append(f"❌ Error guardando: {item}")
                 
-                await status_msg.edit_text("\n".join(results))
+                await status_msg.edit_text("\n\n".join(results), parse_mode='Markdown')
             
             else:
                  await status_msg.edit_text("❌ Tipo de solicitud desconocida.")
@@ -190,6 +202,8 @@ class ExpenseBot:
             await status_msg.edit_text(f"🔥 Ocurrió un error interno: {str(e)}")
 
     async def button_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not await self.check_auth(update): return
+        
         query = update.callback_query
         await query.answer() # Acknowledge click
         
