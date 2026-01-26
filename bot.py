@@ -92,7 +92,7 @@ class ExpenseBot:
         if not await self.check_auth(update): return
         
         user_name = update.effective_user.first_name
-        await self.process_input(update, update.message.text, is_voice=False, user_name=user_name)
+        await self.process_input(update, context, update.message.text, is_voice=False, user_name=user_name)
 
     async def handle_voice(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not await self.check_auth(update): return
@@ -103,13 +103,13 @@ class ExpenseBot:
         await file.download_to_drive(file_path)
         
         user_name = update.effective_user.first_name
-        await self.process_input(update, file_path, is_voice=True, user_name=user_name)
+        await self.process_input(update, context, file_path, is_voice=True, user_name=user_name)
         
         # Cleanup
         if os.path.exists(file_path):
             os.remove(file_path)
 
-    async def process_input(self, update: Update, input_data: str, is_voice: bool, user_name: str):
+    async def process_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE, input_data: str, is_voice: bool, user_name: str):
         # Auth checked by callers
         status_msg = await update.message.reply_text("🤔 Procesando...")
         try:
