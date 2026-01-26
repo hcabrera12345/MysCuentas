@@ -1,8 +1,16 @@
 import logging
 import os
 import asyncio
-from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from ai_handler import AIHandler
 from sheets_handler import SheetsHandler
 from utils import get_current_date
@@ -134,22 +142,19 @@ class ExpenseBot:
             print(f"DEBUG: Intent Type: {intent_type}, Data: {intent_data}") 
 
             if intent_type == 'REPORT':
-                await status_msg.edit_text("📊 Analizando datos...")
+                # Preguntar formato si no se especificó o forzar siempre la pregunta para mejor UX
+                # Guardamos los datos del reporte en el contexto del usuario para usarlos cuando presione el botón
+                context.user_data['report_request'] = intent_data
                 
-                # Fetch fresh records from Sheet
-                records = sheets_handler.get_all_records()
-                
-                from report_engine import ReportEngine
-                engine = ReportEngine(records)
-                
-                # Pass all AI-extracted filters to the engine
-                result = engine.generate_report(intent_data)
-                
-                if result['type'] == 'text':
-                    await status_msg.edit_text(result['content'], parse_mode='Markdown')
-                elif result['type'] == 'image':
-                    await status_msg.delete()
-                    await update.message.reply_photo(photo=open(result['path'], 'rb'), caption="Aquí tienes tu gráfico 📈")
+                keyboard = [
+                    [
+                        InlineKeyboardButton("📝 Texto", callback_data='rep_text'),
+                        InlineKeyboardButton("📉 Gráfico", callback_data='rep_graph'),
+                        InlineKeyboardButton("📋 Tabla", callback_data='rep_table')
+                    ]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await status_msg.edit_text("📊 ¿Cómo quieres ver el reporte?", reply_markup=reply_markup)
             
             elif intent_type == 'DELETE':
                 deleted = sheets_handler.delete_last_entry(user_name)
@@ -159,25 +164,23 @@ class ExpenseBot:
                     await status_msg.edit_text("🤷‍♂️ No encontré ningún gasto reciente tuyo para borrar.")
 
             elif intent_type == 'EXPENSE':
-                item = intent_data.get('item', 'Desconocido')
-                amount = intent_data.get('amount', 0)
-                currency = intent_data.get('currency', 'Bs')
-                category = intent_data.get('category', 'Otros')
-                date = intent_data.get('date') or get_current_date()
+                # Handle List of expenses (new feature) or single dict
+                expenses = intent_data if isinstance(intent_data, list) else [intent_data]
                 
-                success = sheets_handler.add_expense(date, category, item, amount, currency, user_name)
+                results = []
+                for exp in expenses:
+                    item = exp.get('item', 'Desconocido')
+                    amount = exp.get('amount', 0)
+                    currency = exp.get('currency', 'Bs')
+                    category = exp.get('category', 'Otros')
+                    date = exp.get('date') or get_current_date()
+                    
+                    if sheets_handler.add_expense(date, category, item, amount, currency, user_name):
+                        results.append(f"✅ {item} ({amount} {currency})")
+                    else:
+                        results.append(f"❌ {item} (Error)")
                 
-                if success:
-                    await status_msg.edit_text(
-                        f"✅ **Gasto Guardado**\n"
-                        f"👤 Usuario: {user_name}\n"
-                        f"📅 Fecha: {date}\n"
-                        f"🛒 Item: {item}\n"
-                        f"💰 Todo: {amount} {currency}\n"
-                        f"📂 Categ: {category}"
-                    )
-                else:
-                    await status_msg.edit_text("❌ Error guardando en Sheets.")
+                await status_msg.edit_text("\n".join(results))
             
             else:
                  await status_msg.edit_text("❌ Tipo de solicitud desconocida.")
@@ -186,6 +189,45 @@ class ExpenseBot:
             logging.error(f"Error processing input: {e}")
             await status_msg.edit_text(f"🔥 Ocurrió un error interno: {str(e)}")
 
+    async def button_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        await query.answer() # Acknowledge click
+        
+        data = query.data
+        if not data.startswith('rep_'): return
+        
+        # Recuperar los filtros guardados
+        report_data = context.user_data.get('report_request', {})
+        
+        # Override query type based on button click
+        if data == 'rep_graph':
+            report_data['query_type'] = 'graph'
+        else:
+            report_data['query_type'] = 'list' # Text/Table default to list query logic
+            
+        await query.edit_message_text(f"📊 Generando reporte ({data.split('_')[1]})...")
+        
+        try:
+             # Fetch fresh records from Sheet
+            records = self.sheets.get_all_records()
+            from report_engine import ReportEngine
+            engine = ReportEngine(records)
+            
+            result = engine.generate_report(report_data)
+            
+            if result['type'] == 'text':
+                msg = result['content']
+                if data == 'rep_table':
+                    # Convert content to code block for "Table" look
+                    msg = f"```\n{msg}\n```"
+                await query.edit_message_text(msg, parse_mode='Markdown')
+                
+            elif result['type'] == 'image':
+                await query.delete_message()
+                await context.bot.send_photo(chat_id=update.effective_chat.id, photo=open(result['path'], 'rb'), caption="Aquí tienes tu gráfico 📈")
+                
+        except Exception as e:
+             await query.edit_message_text(f"⚠️ Error generando reporte: {e}")
 
 if __name__ == '__main__':
     try:
@@ -197,6 +239,7 @@ if __name__ == '__main__':
         bot.app.add_handler(CommandHandler("reload", bot.reload_categories))
         bot.app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), bot.handle_text))
         bot.app.add_handler(MessageHandler(filters.VOICE, bot.handle_voice))
+        bot.app.add_handler(CallbackQueryHandler(bot.button_handler))
 
         # Check for Render environment
         if os.getenv("RENDER"):

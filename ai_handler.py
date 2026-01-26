@@ -31,17 +31,19 @@ class AIHandler:
         cat_str = ", ".join(categories) if categories else "Alimentos, Transporte, Hogar, Servicios, Entretenimiento, Salud, Otros"
         
         prompt = f"""
-        You are an expense tracking assistant. Extract expense details from this text: "{text}"
+        You are an intelligent expense assistant. Your job is to extract expense data from the user's text: "{text}"
         
-        It is almost certainly an expense log unless explicitly stated otherwise.
-        Synonyms for expense: gasto, compra, pago, costo, anota, registras, etc.
-        Also simple phrases like "50 bs en pan" are expenses.
+        CRITICAL RULES:
+        1. FLEXIBILITY: The order does NOT matter. "Gasolina 50" is the same as "50 Gasolina".
+        2. CORRECTIONS: If the user corrects themselves, use the FINAL value. Ex: "50 bread, no, 60" -> amount: 60.
+        3. MULTI-ITEM: If there are multiple distinct expenses, return a LIST of JSON objects. If only one, return a single object.
         
-        Return RAW JSON (no markdown formatting) with these keys:
-        - item: What was bought (short description).
-        - amount: The number (numeric).
-        - currency: Currency symbol/code (default 'Bs' if not found).
-        - category: One of [{cat_str}]. Infer best fit.
+        Output RAW JSON (no markdown). 
+        Keys: 
+        - item: Short description (e.g., "Pan", "Taxi").
+        - amount: Numeric value (e.g., 50.5).
+        - currency: Default 'Bs' if not specified.
+        - category: One of [{cat_str}]. INFER the best fit.
         - date: YYYY-MM-DD (only if explicitly mentioned, else null).
         """
         try:
@@ -57,14 +59,18 @@ class AIHandler:
         cat_str = ", ".join(categories) if categories else "Alimentos, Transporte, Hogar, Servicios, Entretenimiento, Salud, Otros"
 
         prompt = f"""
-        Listen to this audio. It is a user describing an expense. Extract details into JSON.
-        Examples: "Compré pan 5 pesos", "Gasto de taxi 20", "Anota 50 en remeras".
+        Listen to this audio. It is a user describing expenses. Extract details into JSON.
         
-        Return RAW JSON (no markdown) with keys: item, amount, currency (default Bs), category, date.
+        RULES:
+        1. IGNORE WORD ORDER. "50 taxi" = "taxi 50".
+        2. HANDLE SLANG: "Lucas", "Pesos", "Bolis" -> usually currency or ignorable if amount is clear.
+        3. HEAR CORRECTIONS: "Gaste 100... mentira, fueron 120" -> Amount is 120.
+        
+        Return RAW JSON (no markdown). Keys: item, amount, currency (default Bs), category, date.
         Category MUST be one of: [{cat_str}].
         """
         try:
-            # Use Inline Data (sending bytes directly) to avoid 'upload_file' errors on Render
+            # Use Inline Data
             with open(audio_path, "rb") as f:
                 audio_data = f.read()
 
@@ -95,12 +101,13 @@ class AIHandler:
         RULES:
         1. REPORT: Any query about "gastos", "total", "cuanto", "dame", "ver", "necesito", "reporte".
            - Ex: "dame los gastos de hoy", "cuanto gaste en comida", "total transporte ayer", "necesito reporte".
-           - Even if it mentions categories ("alimentos"), it is a REPORT if it asks for "dame" or "cuanto".
+           - "Quiero ver mis gastos" -> REPORT.
         
         2. DELETE: "borra", "elimina", "me equivoque", "deshacer".
 
         3. EXPENSE: ONLY if it implies *spending now* or *logging data*.
            - Ex: "50 pan", "gaste 10 taxi", "anota comida 20", "compré zapatos".
+           - FLEXIBLE ORDER: "Gasolina 50" is EXPENSE. "50 Gasolina" is EXPENSE.
            - If ambiguous but contains "dame" or "ver", it is REPORT.
 
         Output RAW JSON (no markdown):
@@ -110,13 +117,13 @@ class AIHandler:
         }}
 
         If EXPENSE, extract: item, amount, currency (default 'Bs'), category, date.
-        CRITICAL FOR CATEGORY: Match the input item to the BEST category from this list: [{cat_str}].
-
+        
         If REPORT, extract: 
         - query_type ('total','list','graph')
-        - category (optional, if mentioned like "gastos en alimentos")
+        - category (optional)
         - time_range (today, week, month, year, or all)
-        - filter_user (optional, if mentioned like "por Hernan")
+        - filter_user (optional)
+        - format (optional: 'text', 'table', 'graph') -> ONLY if user explicitly asks (e.g., "dame una tabla").
         
         If DELETE, data is empty {{}}.
         """

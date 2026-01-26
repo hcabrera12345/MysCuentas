@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+python-dotenv
+google-generativeai
+requests
+pydantic
+supabase
+gspread
+oauth2client
