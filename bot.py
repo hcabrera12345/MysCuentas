@@ -216,8 +216,12 @@ class ExpenseBot:
         # Override query type based on button click
         if data == 'rep_graph':
             report_data['query_type'] = 'graph'
+        elif data == 'rep_table':
+            report_data['query_type'] = 'list'
+            report_data['format'] = 'table'
         else:
-            report_data['query_type'] = 'list' # Text/Table default to list query logic
+            report_data['query_type'] = 'list' 
+            report_data['format'] = 'text'
             
         await query.edit_message_text(f"📊 Generando reporte ({data.split('_')[1]})...")
         
@@ -231,7 +235,7 @@ class ExpenseBot:
             
             if result['type'] == 'text':
                 msg = result['content']
-                if data == 'rep_table':
+                if result.get('is_table'):
                     # Convert content to code block for "Table" look
                     msg = f"```\n{msg}\n```"
                 await query.edit_message_text(msg, parse_mode='Markdown')

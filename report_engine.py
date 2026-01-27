@@ -1,4 +1,6 @@
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg') # Server mode
 import matplotlib.pyplot as plt
 import io
 import datetime
@@ -91,18 +93,17 @@ class ReportEngine:
         query_type = intent_data.get('query_type', 'total')
         time_range = intent_data.get('time_range', 'all')
         filter_user = intent_data.get('filter_user')
-        filter_category = intent_data.get('category') # AI extract 'category' as filter if it's a report
+        filter_category = intent_data.get('category') 
 
         df_subset = self.filter_data(time_range, filter_user, filter_category)
         
         if df_subset.empty:
-            return {'type': 'text', 'content': f"ℹ️ No encontré registros para: {time_range} (filtro: {filter_user or 'Todos'}, cat: {filter_category or 'Todas'})."}
+            return {'type': 'text', 'content': f"ℹ️ No encontré registros para: {time_range}."}
 
-        # Graph Request?
+        # 1. GRAPH REQUEST
         if query_type == 'graph':
             buf = self._make_graph(df_subset, time_range)
             if buf:
-                # Save to temp file strictly for bot to send (avoid byte stream issues sometimes)
                 path = "temp_chart.png"
                 with open(path, "wb") as f:
                     f.write(buf.getbuffer())
@@ -110,40 +111,84 @@ class ReportEngine:
             else:
                  return {'type': 'text', 'content': "No hay suficientes datos para graficar."}
         
-        # Default: Text Summary
-        total = df_subset['amount'].sum()
-        count = len(df_subset)
-        
-        # Breakdown by category if not filtered by category (otherwise it's redundant)
-        breakdown_text = ""
-        if not filter_category:
-            grouped = df_subset.groupby('category')['amount'].sum().sort_values(ascending=False)
-            breakdown_text = "\n📂 **Por Categoría:**\n" + "\n".join([f"• {cat}: {val:.2f}" for cat, val in grouped.items()])
-        
-        # Recent items snippet
-        recent = df_subset.sort_values('date', ascending=False).head(5)
-        recent_text = "\n\n📝 **Últimos 5:**\n" + "\n".join([f"- {row['item']} ({row['amount']})" for _, row in recent.iterrows()])
+        # Data Aggregation for Text/Table
+        # Group by User + Category
+        if 'user' in df_subset.columns and 'category' in df_subset.columns:
+            grouped = df_subset.groupby(['user', 'category'])['amount'].sum().reset_index()
+        else:
+            # Fallback if columns missing
+            grouped = df_subset.groupby('category')['amount'].sum().reset_index()
+            grouped['user'] = 'Desconocido'
 
-        # Construct Header
-        header = f"📊 **Reporte**"
-        if time_range != 'all': header += f" ({time_range})"
-        if filter_user: header += f" para {filter_user.capitalize()}"
-        if filter_category: header += f" en {filter_category.capitalize()}"
+        # 2. TABLE REQUEST (explicit format requested)
+        # Format: USUARIO / CATEGORIA / TOTAL
+        if query_type == 'list': # "Table" button maps to 'list' or we can add specific handling if 'format' passed
+             # The bot passes 'list' by default for text/table buttons, distinction is in UI display? 
+             # Wait, user said "si le pido reporte... respuesta por tabla". 
+             # Ideally the bot should detect "tabla" keyword or button press.
+             # The Button handler sends callback `rep_table` which we must handle.
+             # But here we just return the content. 
+             # Text vs Table is often just formatting.
+             
+             # Let's generate both formats and let the caller decide or return based on a flag?
+             # The caller `button_handler` decides if it wraps in ``` code block ```.
+             # But the CONTENT inside needs to be aligned for table.
+             
+             # We will return a formatted string that looks like a table for Monospace.
+             table_lines = [f"{'USUARIO':<10} | {'CATEGORIA':<15} | {'TOTAL':<8}"]
+             table_lines.append("-" * 40)
+             for _, row in grouped.iterrows():
+                 u = str(row['user'])[:10]
+                 c = str(row['category'])[:15]
+                 a = f"{row['amount']:.2f}"
+                 table_lines.append(f"{u:<10} | {c:<15} | {a:<8}")
+             
+             table_content = "\n".join(table_lines)
+             
+             # 3. TEXT REQUEST (Narrative)
+             # "El usuario xxxx gastó en categoria 1, x bs..."
+             text_lines = []
+             for _, row in grouped.iterrows():
+                 text_lines.append(f"👤 El usuario *{row['user']}* gastó en *{row['category']}*: {row['amount']:.2f} Bs.")
+             
+             text_content = "\n".join(text_lines)
+             
+             # Return both components so Bot can choose based on user interaction?
+             # ReportEngine doesn't know about buttons.
+             # Hack: We return a special dict or just the Text version by default?
+             # The user prompt implies: "If I ask for table... If I ask for text..."
+             
+             # If intent_data has 'format' (from AI or button context), use it.
+             req_format = intent_data.get('format', 'text') # Default text
+             
+             if req_format == 'table':
+                 return {'type': 'text', 'content': table_content, 'is_table': True}
+             else:
+                 return {'type': 'text', 'content': text_content}
 
-        msg = f"{header}\n\n💰 **Total: {total:.2f}** (en {count} registros){breakdown_text}{recent_text}"
-        return {'type': 'text', 'content': msg}
+        return {'type': 'text', 'content': "Error generando reporte."}
 
     def _make_graph(self, df, time_range):
         plt.figure(figsize=(10, 6))
-        category_sums = df.groupby('category')['amount'].sum()
-        if category_sums.empty: return None
         
-        category_sums.plot(kind='bar', color='skyblue')
-        plt.title(f'Gastos ({time_range})')
-        plt.xlabel('Categoría')
-        plt.ylabel('Monto')
-        plt.xticks(rotation=45)
-        plt.tight_layout()
+        # Pivot for Multi-Bar Chart: User vs Category
+        # Index: Category, Columns: User, Values: Amount
+        if 'user' in df.columns and 'category' in df.columns:
+            pivot = df.pivot_table(index='category', columns='user', values='amount', aggfunc='sum', fill_value=0)
+            
+            if pivot.empty: return None
+            
+            # Plot
+            pivot.plot(kind='bar', figsize=(10, 6), width=0.8)
+            plt.title(f'Gastos por Usuario y Categoría ({time_range})')
+            plt.xlabel('Categoría')
+            plt.ylabel('Total (Bs)')
+            plt.xticks(rotation=45, ha='right')
+            plt.legend(title='Usuario')
+            plt.tight_layout()
+        else:
+            # Fallback simple bar
+            df.groupby('category')['amount'].sum().plot(kind='bar')
         
         buf = io.BytesIO()
         plt.savefig(buf, format='png')
