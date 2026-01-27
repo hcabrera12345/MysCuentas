@@ -12,23 +12,31 @@ class ReportEngine:
         self.raw_df = pd.DataFrame(data)
         
         # Standardize Columns
-        # Rename map: Spanish -> Internal English
-        rename_map = {
-            'Fecha': 'date', 
-            'Categoría': 'category', 
-            'Item': 'item', 
-            'Monto': 'amount', 
-            'Moneda': 'currency',
-            'Usuario': 'user'
-        }
-        self.df = self.raw_df.rename(columns=rename_map)
+        # Rename map: Spanish -> Internal English (Robust mapping)
+        # We need to find the actual columns in raw_df because of potential accents/case quirks
+        
+        col_map = {}
+        for col in self.raw_df.columns:
+            c = col.lower().strip()
+            if 'fecha' in c: col_map[col] = 'date'
+            elif 'categor' in c: col_map[col] = 'category' # Matches Categoria/Categoría
+            elif 'item' in c or 'descrip' in c: col_map[col] = 'item'
+            elif 'monto' in c: col_map[col] = 'amount'
+            elif 'moneda' in c: col_map[col] = 'currency'
+            elif 'usuario' in c: col_map[col] = 'user'
+            
+        self.df = self.raw_df.rename(columns=col_map)
         
         # Normalize Data Types
         if not self.df.empty:
             try:
                 # Force numeric, coercion errors become NaN (handle gracefully?)
-                self.df['amount'] = pd.to_numeric(self.df['amount'], errors='coerce').fillna(0)
-                self.df['date'] = pd.to_datetime(self.df['date'], errors='coerce')
+                # Cleaning weird characters from amounts if any
+                self.df['amount'] = pd.to_numeric(self.df['amount'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+                
+                # Robust Date Parsing (Sheet might use DD/MM/YYYY or YYYY-MM-DD)
+                self.df['date'] = pd.to_datetime(self.df['date'], dayfirst=True, errors='coerce')
+                
                 # Lowercase string columns for easier filtering
                 if 'user' in self.df.columns:
                     self.df['user_norm'] = self.df['user'].astype(str).str.lower()
@@ -46,14 +54,26 @@ class ReportEngine:
         
         # 1. Date Filter
         if pd.api.types.is_datetime64_any_dtype(df_filtered['date']):
-            if time_range == 'today':
+            # Clean time range string
+            tr = str(time_range).lower().strip()
+            
+            if 'today' in tr or 'hoy' in tr:
                 df_filtered = df_filtered[df_filtered['date'].dt.date == today.date()]
-            elif time_range == 'week':
+            elif 'week' in tr or 'semana' in tr:
                 start_date = today - datetime.timedelta(days=7)
                 df_filtered = df_filtered[df_filtered['date'] >= start_date]
-            elif time_range == 'month':
+            elif 'month' in tr or 'mes' in tr:
                 df_filtered = df_filtered[df_filtered['date'].dt.month == today.month]
                 df_filtered = df_filtered[df_filtered['date'].dt.year == today.year]
+            elif 'days' in tr or 'dias' in tr:
+                # Extract number from "3 days"
+                try:
+                    import re
+                    days = int(re.search(r'\d+', tr).group())
+                    start_date = today - datetime.timedelta(days=days)
+                    df_filtered = df_filtered[df_filtered['date'] >= start_date]
+                except:
+                    pass # Fallback to all if parsing fails
         
         # 2. User Filter (Fuzzy match)
         if filter_user and 'user' in df_filtered.columns:
