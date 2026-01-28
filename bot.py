@@ -247,7 +247,9 @@ class ExpenseBot:
             from report_engine import ReportEngine
             engine = ReportEngine(records)
             
+            print(f"DEBUG: Generating report with data: {report_data}")
             result = engine.generate_report(report_data)
+            print(f"DEBUG: Engine result type: {result.get('type')}")
             
             if result['type'] == 'text':
                 msg = result['content']

@@ -46,6 +46,9 @@ class ReportEngine:
                     self.df['category_norm'] = self.df['category'].astype(str).str.lower()
             except Exception as e:
                 print(f"Data conversion error: {e}")
+                
+        print(f"DEBUG: DataFrame Head:\n{self.df.head()}")
+        print(f"DEBUG: Dtypes:\n{self.df.dtypes}")
 
     def filter_data(self, time_range='all', filter_user=None, filter_category=None):
         if self.df.empty:
@@ -55,9 +58,10 @@ class ReportEngine:
         today = datetime.datetime.now()
         
         # 1. Date Filter
-        if pd.api.types.is_datetime64_any_dtype(df_filtered['date']):
+        if 'date' in df_filtered.columns and pd.api.types.is_datetime64_any_dtype(df_filtered['date']):
             # Clean time range string
             tr = str(time_range).lower().strip()
+            print(f"DEBUG: Filtering for time_range: {tr}")
             
             if 'today' in tr or 'hoy' in tr:
                 df_filtered = df_filtered[df_filtered['date'].dt.date == today.date()]
@@ -74,8 +78,11 @@ class ReportEngine:
                     days = int(re.search(r'\d+', tr).group())
                     start_date = today - datetime.timedelta(days=days)
                     df_filtered = df_filtered[df_filtered['date'] >= start_date]
-                except:
+                except Exception as e:
+                    print(f"DEBUG: Error parsing days filter: {e}")
                     pass # Fallback to all if parsing fails
+        else:
+            print("DEBUG: 'date' column missing or not datetime dtype")
         
         # 2. User Filter (Fuzzy match)
         if filter_user and 'user' in df_filtered.columns:
