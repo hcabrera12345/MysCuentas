@@ -139,19 +139,26 @@ class ExpenseBot:
             print(f"DEBUG: Intent Type: {intent_type}, Data: {intent_data}") 
 
             if intent_type == 'REPORT':
-                # Preguntar formato si no se especificó o forzar siempre la pregunta para mejor UX
-                # Guardamos los datos del reporte en el contexto del usuario para usarlos cuando presione el botón
-                context.user_data['report_request'] = intent_data
+                # Check if format is already specified or implied (e.g. "dame un grafico")
+                explicit_format = intent_data.get('format')
+                query_type = intent_data.get('query_type')
                 
-                keyboard = [
-                    [
-                        InlineKeyboardButton("📝 Texto", callback_data='rep_text'),
-                        InlineKeyboardButton("📉 Gráfico", callback_data='rep_graph'),
-                        InlineKeyboardButton("📋 Tabla", callback_data='rep_table')
+                # If user asked for Graph (query_type='graph') OR explicitly mentioned 'text'/'table'/'graph'
+                if query_type == 'graph' or explicit_format in ['text', 'table', 'graph']:
+                    await self._generate_and_send_report(update, context, intent_data, status_msg)
+                else:
+                    # Ask for format via buttons
+                    context.user_data['report_request'] = intent_data
+                    
+                    keyboard = [
+                        [
+                            InlineKeyboardButton("📝 Texto", callback_data='rep_text'),
+                            InlineKeyboardButton("📉 Gráfico", callback_data='rep_graph'),
+                            InlineKeyboardButton("📋 Tabla", callback_data='rep_table')
+                        ]
                     ]
-                ]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-                await status_msg.edit_text("📊 ¿Cómo quieres ver el reporte?", reply_markup=reply_markup)
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    await status_msg.edit_text("📊 ¿Cómo quieres ver el reporte?", reply_markup=reply_markup)
             
             elif intent_type == 'DELETE':
                 deleted = sheets_handler.delete_last_entry(user_name)
@@ -214,6 +221,7 @@ class ExpenseBot:
         report_data = context.user_data.get('report_request', {})
         
         # Override query type based on button click
+        # Update query params based on button
         if data == 'rep_graph':
             report_data['query_type'] = 'graph'
         elif data == 'rep_table':
@@ -223,11 +231,19 @@ class ExpenseBot:
             report_data['query_type'] = 'list' 
             report_data['format'] = 'text'
             
-        await query.edit_message_text(f"📊 Generando reporte ({data.split('_')[1]})...")
-        
+        # Use helper to generate report
+        # We pass the message object to be edited
+        await self._generate_and_send_report(update, context, report_data, query.message)
+
+    async def _generate_and_send_report(self, update: Update, context: ContextTypes.DEFAULT_TYPE, report_data: dict, status_msg):
+        """Helper to generate and send report results (Text, Table, or Image)"""
         try:
-             # Fetch fresh records from Sheet
+            if status_msg:
+                await status_msg.edit_text(f"📊 Generando reporte...")
+            
+            # Fetch fresh records from Sheet
             records = self.sheets.get_all_records()
+            # Import here to avoid circular dependency issues if any, or keep it clean
             from report_engine import ReportEngine
             engine = ReportEngine(records)
             
@@ -238,14 +254,29 @@ class ExpenseBot:
                 if result.get('is_table'):
                     # Convert content to code block for "Table" look
                     msg = f"```\n{msg}\n```"
-                await query.edit_message_text(msg, parse_mode='Markdown')
+                
+                if status_msg:
+                    await status_msg.edit_text(msg, parse_mode='Markdown')
+                else:
+                    await update.message.reply_text(msg, parse_mode='Markdown')
                 
             elif result['type'] == 'image':
-                await query.delete_message()
-                await context.bot.send_photo(chat_id=update.effective_chat.id, photo=open(result['path'], 'rb'), caption="Aquí tienes tu gráfico 📈")
+                if status_msg:
+                    # For images, we usually want to delete the "Thinking..." status and send a fresh photo
+                    await status_msg.delete()
+                
+                await context.bot.send_photo(
+                    chat_id=update.effective_chat.id, 
+                    photo=open(result['path'], 'rb'), 
+                    caption="Aquí tienes tu gráfico 📈"
+                )
                 
         except Exception as e:
-             await query.edit_message_text(f"⚠️ Error generando reporte: {e}")
+            err_msg = f"⚠️ Error generando reporte: {e}"
+            if status_msg:
+                await status_msg.edit_text(err_msg)
+            else:
+                await update.message.reply_text(err_msg)
 
 if __name__ == '__main__':
     try:
