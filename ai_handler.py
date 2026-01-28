@@ -48,6 +48,9 @@ class AIHandler:
         """
         try:
             response = self.model.generate_content(prompt)
+            if not response or not response.text:
+                return {"error": "Empty response from AI"}
+            
             cleaned_text = self._clean_json(response.text)
             return json.loads(cleaned_text)
         except Exception as e:
@@ -82,6 +85,9 @@ class AIHandler:
                 }
             ])
             
+            if not response or not response.text:
+                return {"error": "Empty response from AI (Audio)"}
+                
             cleaned_text = self._clean_json(response.text)
             return json.loads(cleaned_text)
         except Exception as e:

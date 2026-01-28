@@ -37,8 +37,18 @@ class ReportEngine:
                 self.df['amount'] = pd.to_numeric(self.df['amount'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
                 
                 # Robust Date Parsing (Sheet might use DD/MM/YYYY or YYYY-MM-DD)
+                # Try explicit format first, then inference
                 self.df['date'] = pd.to_datetime(self.df['date'], dayfirst=True, errors='coerce')
                 
+                # Check for any failures to force another strategy if needed
+                if self.df['date'].isnull().all() and not self.df.empty:
+                     print("DEBUG: All dates came back NaT, trying dayfirst=False or mixed")
+                     self.df['date'] = pd.to_datetime(self.raw_df.iloc[:, 0], errors='coerce') # Fallback to raw col 0
+                
+                # Normalize Timezone (Remove timezone info to compare with naive 'now')
+                if pd.api.types.is_datetime64_any_dtype(self.df['date']):
+                     self.df['date'] = self.df['date'].dt.tz_localize(None)
+
                 # Lowercase string columns for easier filtering
                 if 'user' in self.df.columns:
                     self.df['user_norm'] = self.df['user'].astype(str).str.lower()
@@ -69,20 +79,28 @@ class ReportEngine:
                 start_date = today - datetime.timedelta(days=7)
                 df_filtered = df_filtered[df_filtered['date'] >= start_date]
             elif 'month' in tr or 'mes' in tr:
-                df_filtered = df_filtered[df_filtered['date'].dt.month == today.month]
-                df_filtered = df_filtered[df_filtered['date'].dt.year == today.year]
+                # Compare year and month
+                # Ensure we are comparing integers for month/year
+                df_filtered = df_filtered[
+                    (df_filtered['date'].dt.month == today.month) & 
+                    (df_filtered['date'].dt.year == today.year)
+                ]
             elif 'days' in tr or 'dias' in tr:
                 # Extract number from "3 days"
                 try:
                     import re
-                    days = int(re.search(r'\d+', tr).group())
-                    start_date = today - datetime.timedelta(days=days)
+                    match = re.search(r'\d+', tr)
+                    days = int(match.group()) if match else 7
+                    # Ensure start_date is naive
+                    start_date = (today - datetime.timedelta(days=days)).replace(tzinfo=None)
                     df_filtered = df_filtered[df_filtered['date'] >= start_date]
                 except Exception as e:
                     print(f"DEBUG: Error parsing days filter: {e}")
                     pass # Fallback to all if parsing fails
         else:
             print("DEBUG: 'date' column missing or not datetime dtype")
+            # Fallback: If no date column, maybe just return everything? Or logic by string?
+            # For now warning only.
         
         # 2. User Filter (Fuzzy match)
         if filter_user and 'user' in df_filtered.columns:
