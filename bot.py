@@ -117,14 +117,21 @@ class ExpenseBot:
             sheets_handler = self.sheets
             
             if is_voice:
-                # Voice currently treated as Expense
-                data = ai_handler.process_audio(input_data, categories=self.categories)
-                if not data or "error" in data:
-                    err = data.get("error", "Unknown Error") if data else "None Result"
+                # Voice now returns Intent structure like text
+                intent = ai_handler.process_audio(input_data, categories=self.categories)
+                if not intent or "error" in intent:
+                    err = intent.get("error", "Unknown Error") if intent else "None Result"
                     await status_msg.edit_text(f"⚠️ Error procesando audio: {err}")
                     return
-                intent_type = 'EXPENSE'
-                intent_data = data 
+                
+                intent_type = intent.get('type')
+                intent_data = intent.get('data') 
+                
+                # Legacy fallback: If AI returns flat dict (old prompt style), assume EXPENSE
+                if not intent_type and isinstance(intent, dict) and 'amount' in intent:
+                     intent_type = 'EXPENSE'
+                     intent_data = intent
+
             else:
                 # Text input
                 intent = ai_handler.parse_intent(input_data, categories=self.categories)

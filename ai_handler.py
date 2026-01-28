@@ -69,7 +69,20 @@ class AIHandler:
         2. HANDLE SLANG: "Lucas", "Pesos", "Bolis" -> usually currency or ignorable if amount is clear.
         3. HEAR CORRECTIONS: "Gaste 100... mentira, fueron 120" -> Amount is 120.
         
-        Return RAW JSON (no markdown). Keys: item, amount, currency (default Bs), category, date.
+        Return RAW JSON (no markdown).
+        
+        Intent Recognition:
+        - If the audio asks for a report ("dame reporte", "cuanto gaste"), set type="REPORT".
+        - If it lists expenses ("gaste 50", "comida 20"), set type="EXPENSE".
+        
+        JSON Structure:
+        {
+            "type": "EXPENSE" | "REPORT",
+            "data": { ... } 
+        }
+        
+        If EXPENSE, data keys: item, amount, currency (default Bs), category, date.
+        If REPORT, data keys: query_type, time_range, category, format.
         Category MUST be one of: [{cat_str}].
         """
         try:
