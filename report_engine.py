@@ -4,74 +4,78 @@ matplotlib.use('Agg') # Server mode
 import matplotlib.pyplot as plt
 import io
 import datetime
+import re
 
 class ReportEngine:
     def __init__(self, data):
         """
         data: List of dicts from SheetsHandler.get_all_records()
-        Expected Keys (Spanish Headers): Fecha, Categoría, Item, Monto, Moneda, Usuario
         """
         self.raw_df = pd.DataFrame(data)
-        
-        # Standardize Columns
-        # Rename map: Spanish -> Internal English (Robust mapping)
-        # We need to find the actual columns in raw_df because of potential accents/case quirks
-        
+        print(f"DEBUG: Raw Columns: {self.raw_df.columns.tolist()}")
+        if not self.raw_df.empty:
+             print(f"DEBUG: First row sample: {self.raw_df.iloc[0].to_dict()}")
+
         col_map = {}
         for col in self.raw_df.columns:
             c = col.lower().strip()
             if 'fecha' in c: col_map[col] = 'date'
-            elif 'categor' in c: col_map[col] = 'category' # Matches Categoria/Categoría
+            elif 'categor' in c: col_map[col] = 'category'
             elif 'item' in c or 'descrip' in c: col_map[col] = 'item'
             elif 'monto' in c: col_map[col] = 'amount'
             elif 'moneda' in c: col_map[col] = 'currency'
             elif 'usuario' in c: col_map[col] = 'user'
-            
-        self.df = self.raw_df.rename(columns=col_map)
         
-        # Normalize Data Types
+        self.df = self.raw_df.rename(columns=col_map)
+        print(f"DEBUG: Mapped Columns: {self.df.columns.tolist()}")
+
         if not self.df.empty:
             try:
-                # Force numeric, coercion errors become NaN (handle gracefully?)
-                # Cleaning weird characters from amounts if any
+                # 1. Clean Amount
                 self.df['amount'] = pd.to_numeric(self.df['amount'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
                 
-                # Robust Date Parsing (Sheet might use DD/MM/YYYY or YYYY-MM-DD)
-                # Try explicit format first, then inference
-                self.df['date'] = pd.to_datetime(self.df['date'], dayfirst=True, errors='coerce')
-                
-                # Check for any failures to force another strategy if needed
-                if self.df['date'].isnull().all() and not self.df.empty:
-                     print("DEBUG: All dates came back NaT, trying dayfirst=False or mixed")
-                     self.df['date'] = pd.to_datetime(self.raw_df.iloc[:, 0], errors='coerce') # Fallback to raw col 0
-                
-                # Normalize Timezone (Remove timezone info to compare with naive 'now')
-                if pd.api.types.is_datetime64_any_dtype(self.df['date']):
-                     self.df['date'] = self.df['date'].dt.tz_localize(None)
+                # 2. DEBUG RAW DATES
+                if 'date' in self.df.columns:
+                    raw_dates = self.df['date'].head().tolist()
+                    print(f"DEBUG: Raw Dates sample: {raw_dates}")
+                    
+                    # 3. HEAVY DUTY DATE PARSING
+                    # Strategy 1: pd.to_datetime with dayfirst=True (Standard Latam)
+                    self.df['date'] = pd.to_datetime(self.df['date'], dayfirst=True, errors='coerce')
+                    
+                    # Strategy 2: If strategy 1 failed (Nat), try dayfirst=False (US)
+                    if self.df['date'].isnull().any():
+                         mask_nat = self.df['date'].isnull()
+                         # Try filling NaT with secondary strategy
+                         raw_col = self.raw_df[list(col_map.keys())[0]] # Approximate original date col
+                         # We need to re-access the raw values for the NaT rows. 
+                         # Simpler: just reload from raw if many failures.
+                         pass 
+                    
+                    # Manual Fix for NaT (common in Sheets if format is weird text)
+                    # Force remove timezone
+                    if pd.api.types.is_datetime64_any_dtype(self.df['date']):
+                        self.df['date'] = self.df['date'].dt.tz_localize(None)
 
-                # Lowercase string columns for easier filtering
+                # Lowercase strings
                 if 'user' in self.df.columns:
                     self.df['user_norm'] = self.df['user'].astype(str).str.lower()
                 if 'category' in self.df.columns:
                     self.df['category_norm'] = self.df['category'].astype(str).str.lower()
+                    
             except Exception as e:
-                print(f"Data conversion error: {e}")
-                
-        print(f"DEBUG: DataFrame Head:\n{self.df.head()}")
-        print(f"DEBUG: Dtypes:\n{self.df.dtypes}")
+                print(f"DEBUG: CRITICAL Data conversion error: {e}")
 
     def filter_data(self, time_range='all', filter_user=None, filter_category=None):
-        if self.df.empty:
-            return self.df
+        if self.df.empty: return self.df
             
         df_filtered = self.df.copy()
         today = datetime.datetime.now()
         
         # 1. Date Filter
         if 'date' in df_filtered.columns and pd.api.types.is_datetime64_any_dtype(df_filtered['date']):
-            # Clean time range string
             tr = str(time_range).lower().strip()
-            print(f"DEBUG: Filtering for time_range: {tr}")
+            print(f"DEBUG: Applying Filter '{tr}' on {len(df_filtered)} rows")
             
             if 'today' in tr or 'hoy' in tr:
                 df_filtered = df_filtered[df_filtered['date'].dt.date == today.date()]
@@ -79,32 +83,31 @@ class ReportEngine:
                 start_date = today - datetime.timedelta(days=7)
                 df_filtered = df_filtered[df_filtered['date'] >= start_date]
             elif 'month' in tr or 'mes' in tr:
-                # Compare year and month
-                # Ensure we are comparing integers for month/year
+                # Compare year and month explicitly
+                current_month = today.month
+                current_year = today.year
+                print(f"DEBUG: Filtering for Month={current_month}, Year={current_year}")
+                
+                # Debug sample dates in DF before filter
+                sample_dates = df_filtered['date'].dt.strftime('%Y-%m-%d').head().tolist()
+                print(f"DEBUG: Sample dates in DB: {sample_dates}")
+                
                 df_filtered = df_filtered[
-                    (df_filtered['date'].dt.month == today.month) & 
-                    (df_filtered['date'].dt.year == today.year)
+                    (df_filtered['date'].dt.month == current_month) & 
+                    (df_filtered['date'].dt.year == current_year)
                 ]
             elif 'days' in tr or 'dias' in tr:
-                # Extract number from "3 days"
                 try:
-                    import re
                     match = re.search(r'\d+', tr)
                     days = int(match.group()) if match else 7
-                    # Ensure start_date is naive
                     start_date = (today - datetime.timedelta(days=days)).replace(tzinfo=None)
                     df_filtered = df_filtered[df_filtered['date'] >= start_date]
-                except Exception as e:
-                    print(f"DEBUG: Error parsing days filter: {e}")
-                    pass # Fallback to all if parsing fails
-        else:
-            print("DEBUG: 'date' column missing or not datetime dtype")
-            # Fallback: If no date column, maybe just return everything? Or logic by string?
-            # For now warning only.
+                except: pass
         
-        # 2. User Filter (Fuzzy match)
+        print(f"DEBUG: Rows after Time Filter: {len(df_filtered)}")
+
+        # 2. User Filter
         if filter_user and 'user' in df_filtered.columns:
-            # Simple contains check
             df_filtered = df_filtered[df_filtered['user_norm'].str.contains(filter_user.lower(), na=False)]
 
         # 3. Category Filter
