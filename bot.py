@@ -200,11 +200,11 @@ class ExpenseBot:
                             f"📅 Fecha: {date}\n"
                             f"🛒 Item: {item}\n"
                             f"💰 Todo: {amount} {currency}\n"
-                            f"📂 Categ: {category.upper()}"
+                            f"📂 Categ: {(category or 'OTROS').upper()}"
                         )
                         results.append(msg)
                     else:
-                        results.append(f"❌ Error guardando: {item}")
+                        results.append(f"❌ Error guardando. Item: {item or 'Desconocido'}")
                 
                 await status_msg.edit_text("\n\n".join(results), parse_mode='Markdown')
             

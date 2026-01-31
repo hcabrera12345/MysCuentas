@@ -39,12 +39,20 @@ class AIHandler:
         3. MULTI-ITEM: If there are multiple distinct expenses, return a LIST of JSON objects. If only one, return a single object.
         
         Output RAW JSON (no markdown). 
-        Keys: 
-        - item: Short description (e.g., "Pan", "Taxi").
-        - amount: Numeric value (e.g., 50.5).
-        - currency: Default 'Bs' if not specified.
-        - category: One of [{cat_str}]. INFER the best fit.
-        - date: YYYY-MM-DD (only if explicitly mentioned, else null).
+        
+        Intent Recognition:
+        - If the text asks for a report ("dame reporte", "cuanto gaste"), set type="REPORT".
+        - If it lists expenses ("gaste 50", "comida 20"), set type="EXPENSE".
+        
+        JSON Structure:
+        {
+            "type": "EXPENSE" | "REPORT",
+            "data": { ... } 
+        }
+        
+        If EXPENSE, data keys: item, amount, currency (default Bs), category, date.
+        If REPORT, data keys: query_type, time_range, category, format.
+        Category MUST be one of: [{cat_str}]. INFER the best fit.
         """
         try:
             response = self.model.generate_content(prompt)
