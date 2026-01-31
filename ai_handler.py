@@ -46,10 +46,10 @@ class AIHandler:
         - If it lists expenses ("gaste 50", "comida 20"), set type="EXPENSE".
         
         JSON Structure:
-        {
+        {{
             "type": "EXPENSE" | "REPORT",
-            "data": { ... } 
-        }
+            "data": {{ ... }} 
+        }}
         
         If EXPENSE, data keys: item, amount, currency (default Bs), category, date.
         If REPORT, data keys: query_type, time_range, category, format.
@@ -86,10 +86,10 @@ class AIHandler:
         - If it lists expenses ("gaste 50", "comida 20"), set type="EXPENSE".
         
         JSON Structure:
-        {
+        {{
             "type": "EXPENSE" | "REPORT",
-            "data": { ... } 
-        }
+            "data": {{ ... }} 
+        }}
         
         If EXPENSE, data keys: item, amount, currency (default Bs), category, date.
         If REPORT, data keys: query_type, time_range, category, format.
