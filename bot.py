@@ -194,14 +194,19 @@ class ExpenseBot:
                         # 🛒 Item: cerveza
                         # 💰 Todo: 90 Bs
                         # 📂 Categ: ENTRETENIMIENTO
-                        msg = (
-                            f"✅ **Gasto Guardado**\n"
-                            f"👤 Usuario: {user_name}\n"
-                            f"📅 Fecha: {date}\n"
-                            f"🛒 Item: {item}\n"
-                            f"💰 Todo: {amount} {currency}\n"
-                            f"📂 Categ: {(category or 'OTROS').upper()}"
-                        )
+                        try:
+                            msg = (
+                                f"✅ **Gasto Guardado**\n"
+                                f"👤 Usuario: {str(user_name)}\n"
+                                f"📅 Fecha: {str(date)}\n"
+                                f"🛒 Item: {str(item)}\n"
+                                f"💰 Todo: {str(amount)} {str(currency)}\n"
+                                f"📂 Categ: {str((category or 'OTROS')).upper()}"
+                            )
+                        except Exception as fmt_err:
+                            msg = f"✅ Guardado (Error al formatear mensaje: {fmt_err})"
+                            print(f"DEBUG: Formatting error details: item={repr(item)} amount={repr(amount)}")
+                        
                         results.append(msg)
                     else:
                         results.append(f"❌ Error guardando. Item: {item or 'Desconocido'}")

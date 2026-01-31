@@ -37,6 +37,7 @@ class AIHandler:
         1. FLEXIBILITY: The order does NOT matter. "Gasolina 50" is the same as "50 Gasolina".
         2. CORRECTIONS: If the user corrects themselves, use the FINAL value. Ex: "50 bread, no, 60" -> amount: 60.
         3. MULTI-ITEM: If there are multiple distinct expenses, return a LIST of JSON objects. If only one, return a single object.
+        4. VERBS: Ignore verbs like "registra", "anota", "gaste", "compre". Focus on Item + Amount.
         
         Output RAW JSON (no markdown). 
         
@@ -76,6 +77,7 @@ class AIHandler:
         1. IGNORE WORD ORDER. "50 taxi" = "taxi 50".
         2. HANDLE SLANG: "Lucas", "Pesos", "Bolis" -> usually currency or ignorable if amount is clear.
         3. HEAR CORRECTIONS: "Gaste 100... mentira, fueron 120" -> Amount is 120.
+        4. NATURAL LANGUAGE: Handle phrases like "Registra 50 bs de pan" or "Gaste 100 en gasolina". The verb "Registra"/"Gaste" is NOT the item.
         
         Return RAW JSON (no markdown).
         
